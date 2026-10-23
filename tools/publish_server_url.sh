@@ -39,7 +39,7 @@ fresh=0  # туннель только что запущен: адрес ещё 
 if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
   say "туннеля нет, создаю"
   docker run -d --name "$CONTAINER" --restart unless-stopped --network server_default \
-    cloudflare/cloudflared:latest tunnel --no-autoupdate --protocol http2 --url http://geoserver:8080 >/dev/null
+    cloudflare/cloudflared:latest tunnel --no-autoupdate --protocol http2 --url http://gateway:80 >/dev/null
   wait_new_url "" >/dev/null || true
   fresh=1
 elif [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER")" != true ]; then

@@ -1,6 +1,7 @@
 server/.env
 server/data/
 __pycache__/
+*.pyc
 
 app/.dart_tool/
 app/build/
@@ -9,3 +10,21 @@ app/.flutter-plugins-dependencies
 app/pubspec.lock
 tools/.venv/
 app/dist/
+
+field_route/.dart_tool/
+field_route/build/
+field_route/.flutter-plugins
+field_route/.flutter-plugins-dependencies
+field_route/pubspec.lock
+field_route/dist/
+field_route/**/*.apk
+
+# Полная дорожная сеть Казахстана — слишком тяжёлая для git; в Docker используется ili-срез
+tools/tiffs/FieldNav/graph_cache.pkl
+tools/tiffs/FieldNav/field_roads.gpkg
+/FieldNav/
+*.apk
+
+# Дубликаты тяжёлых растров (оригиналы достаточно в tiffs/ или на сервере)
+tools/tiffs/*.tif
+tools/tiffs/*.tif.aux.xml

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Навигатор Инспектора</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary: #007aff;
+            --accent: #ff5500;
+            --bg-glass: rgba(25, 28, 34, 0.9);
+            --text-light: #f5f7fa;
+            --text-muted: #9aa5b1;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; background: #1a1d24; }
+        #map { height: 100%; width: 100%; z-index: 1; }
+
+        /* Верхняя сводка маршрута */
+        .top-bar {
+            position: absolute; top: 12px; left: 12px; right: 12px;
+            background: var(--bg-glass); color: var(--text-light);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px; border-radius: 14px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+            z-index: 1000;
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 10px;
+        }
+        .status-text { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+        .metrics-main { font-size: 18px; font-weight: 700; color: #fff; }
+        .metrics-sub { font-size: 12px; color: #ffb74d; margin-top: 2px; }
+
+        /* Правая колонка быстрых кнопок (как в навигаторах) */
+        .fab-group {
+            position: absolute; right: 12px; top: 105px;
+            display: flex; flex-direction: column; gap: 10px;
+            z-index: 1000;
+        }
+        .fab {
+            width: 46px; height: 46px;
+            border-radius: 12px; border: none;
+            background: var(--bg-glass); color: var(--text-light);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+            font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .fab.active { background: var(--primary); color: #fff; }
+        .fab.warn { background: #e65100; color: #fff; }
+
+        /* Нижняя панель слоев и управления GeoServer */
+        .bottom-sheet {
+            position: absolute; bottom: 16px; left: 12px; right: 12px;
+            background: var(--bg-glass); color: var(--text-light);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px; border-radius: 14px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+            z-index: 1000;
+            transition: transform 0.25s ease;
+        }
+        .bottom-sheet.collapsed { transform: translateY(calc(100% - 42px)); }
+        .sheet-header {
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted);
+            padding-bottom: 8px;
+        }
+        .controls-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;
+        }
+        .control-full { grid-column: 1 / -1; }
+        label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+        select, input[type="text"], input[type="range"] {
+            width: 100%; padding: 8px 10px; border-radius: 8px;
+            border: 1px solid #3e4652; background: #262b33; color: #fff; font-size: 13px;
+        }
+        .btn-action {
+            padding: 9px 12px; border-radius: 8px; border: none;
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            background: var(--primary); color: white;
+        }
+        .btn-clear { background: #d32f2f; color: white; }
+
+        /* Маркер GPS инспектора с пульсацией */
+        .gps-marker {
+            width: 18px; height: 18px;
+            background: #007aff; border: 3px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 0 6px rgba(0, 122, 255, 0.35);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Верхний инфоблок -->
+    <div class="top-bar">
+        <div>
+            <div class="status-text" id="status-text">Ожидание координат GPS...</div>
+            <div class="metrics-main" id="metrics-main">Выберите точку на карте</div>
+            <div class="metrics-sub" id="metrics-sub"></div>
+        </div>
+        <button class="btn-action btn-clear" id="clear-btn" style="display:none;" onclick="clearRoute()">Сброс</button>
+    </div>
+
+    <!-- Боковые кнопки управления -->
+    <div class="fab-group">
+        <button class="fab active" id="btn-follow" title="Центрировать на мне" onclick="centerOnUser()">🎯</button>
+        <button class="fab" id="btn-basemap" title="Спутник / Схема" onclick="toggleBasemap()">🛰️</button>
+        <button class="fab" id="btn-sim" title="Режим теста кликами (ПК)" onclick="toggleSimMode()">🖱️</button>
+    </div>
+
+    <!-- Карта -->
+    <div id="map"></div>
+
+    <!-- Нижняя панель слоев GeoServer -->
+    <div class="bottom-sheet" id="bottom-sheet">
+        <div class="sheet-header" onclick="toggleSheet()">
+            <span>⚙️ Слои зоны интереса (GeoServer)</span>
+            <span id="sheet-arrow">▼</span>
+        </div>
+        <div class="controls-grid">
+            <div>
+                <label>Рабочая папка (Workspace)</label>
+                <input type="text" id="gs-workspace" value="inspector_data" onchange="loadGeoServerLayers()">
+            </div>
+            <div>
+                <label>Прозрачность растра: <span id="op-val">70%</span></label>
+                <input type="range" id="wms-opacity" min="0" max="100" value="70" oninput="updateOpacity(this.value)">
+            </div>
+            <div class="control-full">
+                <label>Актуальный слой данных (WMS)</label>
+                <select id="wms-layer-select" onchange="switchWmsLayer()">
+                    <option value="">-- Без растрового слоя --</option>
+                </select>
+            </div>
+            <div class="control-full" style="display:flex; gap:8px;">
+                <input type="text" id="manual-layer" placeholder="Или введите workspace:layer_name вручную">
+                <button class="btn-action" onclick="applyManualLayer()">Подключить</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. Инициализация карты (Алматинская область по умолчанию)
+        const map = L.map('map', { zoomControl: false }).setView([43.35, 76.95], 10);
+
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+        const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+        const labelsLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+
+        // Для полей по умолчанию включаем гибрид (Спутник + Названия)
+        let isSatellite = true;
+        satLayer.addTo(map);
+        labelsLayer.addTo(map);
+
+        // Состояние навигатора
+        let wmsLayer = null;
+        let wmsBaseUrl = "http://localhost:8080/geoserver/inspector_data/wms";
+        let isSimMode = false;
+        let autoFollow = true;
+        let userPos = null;       // {lat, lon}
+        let targetPos = null;     // {lat, lon}
+        let userMarker = null;
+        let targetMarker = null;
+        let roadRouteLayer = null;
+        let offroadLayer = null;
+
+        // 2. Предотвращение гашения экрана в пути (Wake Lock API)
+        async function enableWakeLock() {
+            if ('wakeLock' in navigator) {
+                try { await navigator.wakeLock.request('screen'); } catch (e) {}
+            }
+        }
+        document.addEventListener('click', enableWakeLock, { once: true });
+
+        // 3. Переключение Спутник / Схема OSM
+        function toggleBasemap() {
+            isSatellite = !isSatellite;
+            const btn = document.getElementById('btn-basemap');
+            if (isSatellite) {
+                map.removeLayer(osmLayer);
+                satLayer.addTo(map);
+                labelsLayer.addTo(map);
+                btn.classList.add('active');
+            } else {
+                map.removeLayer(satLayer);
+                map.removeLayer(labelsLayer);
+                osmLayer.addTo(map);
+                btn.classList.remove('active');
+            }
+            if (wmsLayer) wmsLayer.bringToFront();
+        }
+
+        // 4. Отслеживание GPS инспектора
+        function startGpsTracking() {
+            if (!("geolocation" in navigator)) {
+                setStatus("GPS не поддерживается браузером. Включите режим 🖱️");
+                return;
+            }
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    if (isSimMode) return;
+                    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+                    updateUserPosition(lat, lon, accuracy);
+                },
+                (err) => {
+                    if (!isSimMode) setStatus("Нет сигнала GPS. Для теста с ПК нажмите 🖱️ справа");
+                },
+                { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+            );
+        }
+
+        function updateUserPosition(lat, lon, accuracy = 10) {
+            userPos = { lat, lon };
+            if (!userMarker) {
+                const icon = L.divIcon({ className: 'gps-marker', iconSize: [18, 18] });
+                userMarker = L.marker([lat, lon], { icon }).addTo(map);
+                if (autoFollow) map.setView([lat, lon], 14);
+            } else {
+                userMarker.setLatLng([lat, lon]);
+                if (autoFollow) map.panTo([lat, lon]);
+            }
+
+            if (!targetPos) {
+                setStatus(`GPS активен (±${Math.round(accuracy)} м). Тапните на зону интереса.`);
+            } else {
+                // Прямая дистанция до точки при приближении
+                const directDistM = map.distance([lat, lon], [targetPos.lat, targetPos.lon]);
+                if (directDistM < 500) {
+                    setStatus(`Вы рядом с точкой замера! Прямая видимость: ${Math.round(directDistM)} м`);
+                }
+            }
+        }
+
+        map.on('dragstart', () => {
+            autoFollow = false;
+            document.getElementById('btn-follow').classList.remove('active');
+        });
+
+        function centerOnUser() {
+            autoFollow = true;
+            document.getElementById('btn-follow').classList.add('active');
+            if (userPos) map.flyTo([userPos.lat, userPos.lon], 15);
+        }
+
+        // 5. Режим симуляции на ПК (клик А -> клик Б)
+        function toggleSimMode() {
+            isSimMode = !isSimMode;
+            const btn = document.getElementById('btn-sim');
+            clearRoute();
+            if (isSimMode) {
+                btn.classList.add('warn');
+                userPos = null;
+                if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+                setStatus("ТЕСТ ПК: Кликните 1 раз для точки Старта (А)");
+            } else {
+                btn.classList.remove('warn');
+                setStatus("Возврат в режим GPS...");
+                startGpsTracking();
+            }
+        }
+
+        // 6. Клик по карте: выбор цели и расчет маршрута
+        map.on('click', (e) => {
+            const { lat, lng: lon } = e.latlng;
+
+            if (isSimMode && !userPos) {
+                updateUserPosition(lat, lon, 5);
+                setStatus("Старт (А) задан. Теперь кликните в зону интереса (Б)");
+                return;
+            }
+
+            if (!userPos) {
+                alert("Местоположение еще не определено. Включите геолокацию или нажмите кнопку 🖱️ справа для теста мышкой.");
+                return;
+            }
+
+            targetPos = { lat, lon };
+            if (targetMarker) map.removeLayer(targetMarker);
+            targetMarker = L.marker([lat, lon]).addTo(map).bindPopup("Точка замера").openPopup();
+
+            requestRoute(userPos.lon, userPos.lat, lon, lat);
+        });
+
+        function requestRoute(sLon, sLat, eLon, eLat) {
+            setStatus("Расчет оптимального маршрута по графу...");
+            fetch(`/api/route?start_lon=${sLon}&start_lat=${sLat}&end_lon=${eLon}&end_lat=${eLat}`)
+                .then(async res => {
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || "Ошибка маршрутизации");
+                    return data;
+                })
+                .then(data => {
+                    if (roadRouteLayer) map.removeLayer(roadRouteLayer);
+                    if (offroadLayer) map.removeLayer(offroadLayer);
+
+                    // Основная трасса по дорогам
+                    roadRouteLayer = L.geoJSON(data.road_geojson, {
+                        style: { color: '#ff5500', weight: 6, opacity: 0.95, lineJoin: 'round' }
+                    }).addTo(map);
+
+                    // Пунктирный подход от дороги в поле
+                    offroadLayer = L.geoJSON(data.offroad_geojson, {
+                        style: { color: '#00e5ff', weight: 4, dashArray: '8, 8', opacity: 0.9 }
+                    }).addTo(map);
+
+                    const m = data.metrics;
+                    setStatus("Маршрут построен");
+                    document.getElementById('metrics-main').innerText = `${m.road_distance_km} км (~${m.duration_min} мин)`;
+                    document.getElementById('metrics-sub').innerText =
+                        m.offroad_target_m > 15
+                        ? `Съезд с дороги в поле: ${m.offroad_target_m} м (пунктир)`
+                        : `Точка прямо у дороги`;
+
+                    document.getElementById('clear-btn').style.display = 'block';
+                    map.fitBounds(roadRouteLayer.getBounds().extend([eLat, eLon]), { padding: [60, 60] });
+                })
+                .catch(err => {
+                    setStatus("Ошибка: " + err.message);
+                });
+        }
+
+        function clearRoute() {
+            targetPos = null;
+            if (targetMarker) { map.removeLayer(targetMarker); targetMarker = null; }
+            if (roadRouteLayer) { map.removeLayer(roadRouteLayer); roadRouteLayer = null; }
+            if (offroadLayer) { map.removeLayer(offroadLayer); offroadLayer = null; }
+            document.getElementById('metrics-main').innerText = "Выберите точку на карте";
+            document.getElementById('metrics-sub').innerText = "";
+            document.getElementById('clear-btn').style.display = 'none';
+            if (isSimMode) {
+                userPos = null;
+                if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+                setStatus("ТЕСТ ПК: Кликните для выбора точки Старта (А)");
+            }
+        }
+
+        // 7. Работа со слоями GeoServer
+        function loadGeoServerLayers() {
+            const ws = document.getElementById('gs-workspace').value.trim();
+            fetch(`/api/geoserver/layers?workspace=${encodeURIComponent(ws)}`)
+                .then(r => r.json())
+                .then(data => {
+                    wmsBaseUrl = data.wms_url;
+                    const sel = document.getElementById('wms-layer-select');
+                    sel.innerHTML = '<option value="">-- Без растрового слоя --</option>';
+                    (data.layers || []).forEach(l => {
+                        const opt = document.createElement('option');
+                        opt.value = l.name;
+                        opt.innerText = `${l.title} (${l.name})`;
+                        sel.appendChild(opt);
+                    });
+                })
+                .catch(() => {});
+        }
+
+        function switchWmsLayer() {
+            const layerName = document.getElementById('wms-layer-select').value;
+            applyWmsLayer(layerName);
+        }
+
+        function applyManualLayer() {
+            const layerName = document.getElementById('manual-layer').value.trim();
+            if (layerName) applyWmsLayer(layerName);
+        }
+
+        function applyWmsLayer(layerName) {
+            if (wmsLayer) { map.removeLayer(wmsLayer); wmsLayer = null; }
+            if (!layerName) return;
+
+            const opacity = document.getElementById('wms-opacity').value / 100;
+            wmsLayer = L.tileLayer.wms(wmsBaseUrl, {
+                layers: layerName,
+                format: 'image/png',
+                transparent: true,
+                version: '1.3.0',
+                opacity: opacity
+            }).addTo(map);
+        }
+
+        function updateOpacity(val) {
+            document.getElementById('op-val').innerText = val + '%';
+            if (wmsLayer) wmsLayer.setOpacity(val / 100);
+        }
+
+        function toggleSheet() {
+            const sheet = document.getElementById('bottom-sheet');
+            const collapsed = sheet.classList.toggle('collapsed');
+            document.getElementById('sheet-arrow').innerText = collapsed ? '▲' : '▼';
+        }
+
+        function setStatus(txt) {
+            document.getElementById('status-text').innerText = txt;
+        }
+
+        // Старт
+        startGpsTracking();
+        loadGeoServerLayers();
+    </script>
+</body>
+</html>

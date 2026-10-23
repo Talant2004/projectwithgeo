@@ -3,9 +3,34 @@
 Центральное хранилище съёмок (GeoServer + PostGIS на домашнем сервере, доступ через Cloudflare Tunnel) и мобильное приложение на Flutter: просмотр карт, оконтуривание очагов *Cuscuta campestris*, полётное задание для агродрона (PDF + KML).
 
 ```
-server/   docker-compose: GeoServer, PostGIS, cloudflared; схема БД; стиль очагов
-tools/    povilika_cli.py — настройка GeoServer и загрузка файлов по иерархии
-app/      Flutter-приложение «Повилика»
+server/       один docker compose: PostGIS, GeoServer, FieldNav, webapi, nginx-шлюз
+web/          веб-модуль Повилика (Leaflet: карта, слои, шторка, PDF-акт, загрузка)
+tools/        povilika_cli / inspector_cli, GUI загрузки снимков и TIFF инспектора
+app/          Flutter «Повилика» (агроном)
+field_route/  Flutter «Полевой маршрут» (инспектор: слои саранчи + маршрут)
+```
+
+### Веб-модуль (браузер)
+
+После `cd server && ./start.sh` откройте [http://127.0.0.1:8088/](http://127.0.0.1:8088/):
+
+- подложки OSM и спутник Esri, панель слоёв съёмок и очагов;
+- шторка для сравнения двух растров;
+- pop-up по клику на очаг (координаты, площадь, дата);
+- скачивание выбранных очагов в GeoJSON;
+- PDF «Акт фитосанитарного обследования» (логин/пароль `APP_USER` / `APP_PASSWORD` из `.env`);
+- загрузка TIFF/GPKG/SHP **только по локальной сети или на сервер** — не через Cloudflare Tunnel (лимит ~100 МБ).
+
+### Полевой маршрут (инспектор)
+
+Один сервер с «Повиликой». Слои зон дельты Или — workspace `inspector_data` (не повилика).
+Маршруты — сервис FieldNav в том же `docker compose` (порт через шлюз `/fieldnav`).
+
+```bash
+cd server && ./start.sh          # всё сразу
+python3 ../tools/inspector_cli.py setup
+python3 ../tools/inspector_cli.py publish
+# GUI: ярлык «Полевой маршрут — загрузка слоёв» или tools/inspector_gui.py
 ```
 
 ## Как это устроено

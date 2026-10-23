@@ -10,6 +10,7 @@ import '../geo.dart';
 import '../geoserver_api.dart';
 import '../models.dart';
 import '../report/flight_task.dart';
+import '../report/phyto_act.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({
@@ -55,17 +56,16 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Future<void> _withTask(Future<void> Function(FlightTask t) action) async {
-    final t = _task;
-    if (t == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Укажите норму расхода рабочего раствора')),
+  PhytoAct get _act => PhytoAct(
+        survey: widget.survey,
+        hotspots: widget.hotspots,
+        organization: widget.api.settings.organization,
       );
-      return;
-    }
+
+  Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
     try {
-      await action(t);
+      await action();
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
@@ -75,12 +75,23 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  Future<void> _previewPdf() => _withTask((t) async {
+  Future<void> _withTask(Future<void> Function(FlightTask t) action) async {
+    final t = _task;
+    if (t == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Укажите норму расхода рабочего раствора')),
+      );
+      return;
+    }
+    await _run(() => action(t));
+  }
+
+  Future<void> _previewFlightPdf() => _withTask((t) async {
         final bytes = await buildPdf(t, widget.api);
         await Printing.layoutPdf(onLayout: (_) async => bytes, name: '${t.fileBaseName}.pdf');
       });
 
-  Future<void> _sharePackage() => _withTask((t) async {
+  Future<void> _shareFlight() => _withTask((t) async {
         final dir = await getTemporaryDirectory();
         final pdf = File('${dir.path}/${t.fileBaseName}.pdf');
         final kml = File('${dir.path}/${t.fileBaseName}.kml');
@@ -95,21 +106,68 @@ class _ReportScreenState extends State<ReportScreen> {
         );
       });
 
+  Future<void> _previewActPdf() => _run(() async {
+        final bytes = await buildPhytoActPdf(_act, widget.api);
+        await Printing.layoutPdf(onLayout: (_) async => bytes, name: '${_act.fileBaseName}.pdf');
+      });
+
+  Future<void> _shareAct() => _run(() async {
+        final act = _act;
+        final dir = await getTemporaryDirectory();
+        final pdf = File('${dir.path}/${act.fileBaseName}.pdf');
+        await pdf.writeAsBytes(await buildPhytoActPdf(act, widget.api));
+        await Share.shareXFiles(
+          [XFile(pdf.path, mimeType: 'application/pdf')],
+          subject: 'Акт фитосанитарного обследования — ${act.survey.farm} / ${act.survey.field}',
+        );
+      });
+
   @override
   Widget build(BuildContext context) {
     final t = _task;
     final area = widget.hotspots.fold(0.0, (s, h) => s + h.areaHa);
     final text = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Полётное задание')),
+      appBar: AppBar(title: const Text('Отчёты')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Text('${widget.survey.farm} / ${widget.survey.field}', style: text.titleMedium),
           const SizedBox(height: 4),
           const Text('Вредный организм: $pestName', style: TextStyle(fontStyle: FontStyle.italic)),
-          Text('Очагов: ${widget.hotspots.length} · площадь ${fmtNum(area, 3)} га'),
-          const SizedBox(height: 20),
+          Text('Очагов: ${widget.hotspots.length} · площадь ${fmtNum(area, 3)} га '
+              '(${fmtNum(area * 10000, 0)} м²)'),
+          if (_busy) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+
+          const SizedBox(height: 24),
+          Text('Акт фитосанитарного обследования', style: text.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            'Шапка с датой и координатами поля, мини-карта с контурами, '
+            'таблица очагов и сумма площади заражения.',
+            style: text.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _busy ? null : _previewActPdf,
+            icon: const Icon(Icons.description),
+            label: const Text('Просмотр / печать акта (PDF)'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _shareAct,
+            icon: const Icon(Icons.share),
+            label: const Text('Отправить акт PDF'),
+          ),
+
+          const SizedBox(height: 28),
+          const Divider(),
+          const SizedBox(height: 8),
+          Text('Полётное задание БПЛА', style: text.titleMedium),
+          const SizedBox(height: 12),
           TextField(
             controller: _solutionRate,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -129,7 +187,7 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Card(
             color: Theme.of(context).colorScheme.primaryContainer,
             child: Padding(
@@ -148,19 +206,17 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          if (_busy) const LinearProgressIndicator(),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            onPressed: _busy ? null : _previewPdf,
+          const SizedBox(height: 16),
+          FilledButton.tonalIcon(
+            onPressed: _busy ? null : _previewFlightPdf,
             icon: const Icon(Icons.picture_as_pdf),
-            label: const Text('Просмотр / печать PDF'),
+            label: const Text('Просмотр / печать задания PDF'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: _busy ? null : _sharePackage,
+            onPressed: _busy ? null : _shareFlight,
             icon: const Icon(Icons.share),
-            label: const Text('Отправить PDF + KML'),
+            label: const Text('Отправить задание PDF + KML'),
           ),
         ],
       ),

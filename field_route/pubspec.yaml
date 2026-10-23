@@ -1,0 +1,25 @@
+name: field_route
+description: "Полевой маршрут — карта зон отрождения саранчи и построение маршрута для инспектора."
+publish_to: "none"
+version: 0.1.2+3
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  http: ^1.2.2
+  # 2.5.x на части Xiaomi/MIUI даёт NoSuchMethodError в SharedPreferencesApiRegistrar
+  shared_preferences: 2.2.3
+  geolocator: ^13.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

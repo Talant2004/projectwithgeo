@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Повилика — веб-карта</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="appbar">
+    <button type="button" id="btnMenu" aria-label="Меню">☰</button>
+    <h1>Повилика</h1>
+    <span class="meta" id="hdrHint">карта · слои · акт</span>
+    <span class="spacer"></span>
+    <button type="button" id="btnFit">Показать всё</button>
+  </header>
+
+  <div class="layout">
+    <aside class="panel" id="panel">
+      <section>
+        <h2>Подложка</h2>
+        <label class="row"><input type="radio" name="base" value="osm" checked /> OpenStreetMap</label>
+        <label class="row"><input type="radio" name="base" value="esri" /> Спутник (Esri)</label>
+      </section>
+
+      <section>
+        <h2>Съёмки</h2>
+        <div id="surveyList" class="meta">Загрузка…</div>
+        <div class="actions" style="margin-top:8px">
+          <button type="button" id="btnReload">Обновить</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Шторка (сравнение)</h2>
+        <label class="meta">Левый слой</label>
+        <select id="swipeLeft"><option value="">—</option></select>
+        <label class="meta">Правый слой</label>
+        <select id="swipeRight"><option value="">—</option></select>
+        <div class="actions">
+          <button type="button" id="btnSwipeOn">Включить шторку</button>
+          <button type="button" id="btnSwipeOff">Выключить</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Очаги</h2>
+        <label class="row"><input type="checkbox" id="chkFoci" checked /> Показать очаги</label>
+        <label class="row"><input type="checkbox" id="chkSelectAll" /> Выбрать все на поле</label>
+        <div id="fociList" class="foci-list meta">Нет данных</div>
+        <div class="actions" style="margin-top:8px">
+          <button type="button" id="btnJson">Скачать JSON</button>
+          <button type="button" class="primary" id="btnAct">Сформировать акт (PDF)</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Доступ API</h2>
+        <label class="meta">Логин (APP_USER)</label>
+        <input type="text" id="apiUser" autocomplete="username" />
+        <label class="meta">Пароль</label>
+        <input type="password" id="apiPass" autocomplete="current-password" />
+        <p class="meta">Нужен для загрузки и PDF-акта.</p>
+      </section>
+
+      <section>
+        <h2>Загрузка файла</h2>
+        <p class="note">Только локальная сеть / сервер. Не через Cloudflare Tunnel (лимит ~100&nbsp;МБ).</p>
+        <label class="meta">Хозяйство</label>
+        <input type="text" id="upFarm" />
+        <label class="meta">Поле</label>
+        <input type="text" id="upField" />
+        <label class="meta">Дата</label>
+        <input type="date" id="upDate" />
+        <label class="meta">Файл (.tif / .gpkg / .shp)</label>
+        <input type="file" id="upFile" accept=".tif,.tiff,.gpkg,.shp" />
+        <label class="row"><input type="checkbox" id="upReplace" /> Перезаписать слой</label>
+        <div class="actions">
+          <button type="button" class="primary" id="btnUpload">Загрузить и опубликовать</button>
+        </div>
+      </section>
+
+      <div id="status"></div>
+    </aside>
+
+    <div id="map" role="application" aria-label="Карта"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/digidem/leaflet-side-by-side@2.2.0/leaflet-side-by-side.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

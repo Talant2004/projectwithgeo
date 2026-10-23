@@ -35,6 +35,56 @@ services:
     volumes:
       - ${DATA_DIR:-./data}/geoserver_data:/opt/geoserver_data
       - ${DATA_DIR:-./data}/surveys:/data/surveys:ro
+      - ${INSPECTOR_LAYERS_HOST_DIR:-./data/inspector_layers}:${INSPECTOR_LAYERS_CONTAINER_DIR:-/data/inspector}:ro
+
+  fieldnav:
+    build: ../tools/tiffs/FieldNav
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Сеть дорог только по дельте Или (полный Казахстан не влезает в ОЗУ вместе с GeoServer)
+      GPKG_PATH: /data/field_roads_ili.gpkg
+      CACHE_PATH: /data/graph_cache_ili.pkl
+      GEOSERVER_URL: http://geoserver:8080/geoserver
+      GEOSERVER_WORKSPACE: inspector_data
+    volumes:
+      - ../tools/tiffs/FieldNav/field_roads_ili.gpkg:/data/field_roads_ili.gpkg:ro
+      - ../tools/tiffs/FieldNav/graph_cache_ili.pkl:/data/graph_cache_ili.pkl:ro
+      - ../tools/tiffs/FieldNav/static:/app/static:ro
+    mem_limit: 512m
+
+  webapi:
+    build: ./webapi
+    restart: unless-stopped
+    depends_on:
+      - geoserver
+    environment:
+      GEOSERVER_URL: http://geoserver:8080/geoserver
+      GEOSERVER_ADMIN_USER: ${GEOSERVER_ADMIN_USER}
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD}
+      APP_USER: ${APP_USER}
+      APP_PASSWORD: ${APP_PASSWORD}
+      SURVEYS_HOST_DIR: /data/surveys
+      SURVEYS_CONTAINER_DIR: /data/surveys
+      TOOLS_DIR: /tools
+    volumes:
+      - ${DATA_DIR:-./data}/surveys:/data/surveys
+      - ../tools:/tools:ro
+    mem_limit: 1g
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - geoserver
+      - fieldnav
+      - webapi
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../web:/usr/share/nginx/html:ro
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -43,5 +93,5 @@ services:
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     depends_on:
-      - geoserver
+      - gateway
     profiles: ["tunnel"]

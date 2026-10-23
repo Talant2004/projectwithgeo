@@ -209,7 +209,7 @@ class _MapScreenState extends State<MapScreen> {
           IconButton(icon: const Icon(Icons.list), tooltip: 'Очаги', onPressed: _showList),
           IconButton(
             icon: const Icon(Icons.assignment),
-            tooltip: 'Полётное задание',
+            tooltip: 'Отчёты (акт / полётное задание)',
             onPressed: _hotspots.isEmpty || _drawing ? null : _openReport,
           ),
         ],

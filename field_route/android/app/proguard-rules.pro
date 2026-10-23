@@ -1,0 +1,2 @@
+-keep class io.flutter.plugins.sharedpreferences.** { *; }
+-keepclassmembers class io.flutter.plugins.sharedpreferences.** { *; }
