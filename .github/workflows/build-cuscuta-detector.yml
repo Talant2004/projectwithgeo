@@ -1,0 +1,48 @@
+name: Build CuscutaDetector Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "cuscuta_detector/**"
+      - ".github/workflows/build-cuscuta-detector.yml"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        working-directory: cuscuta_detector
+        run: |
+          python -m pip install -U pip wheel
+          pip install -r requirements.txt
+
+      - name: Build exe
+        working-directory: cuscuta_detector
+        run: |
+          pyinstaller --noconfirm --clean --windowed --onefile `
+            --name CuscutaDetector `
+            --collect-all rasterio `
+            --collect-all fiona `
+            --collect-all pyproj `
+            --collect-all geopandas `
+            --collect-all shapely `
+            --hidden-import rasterio.sample `
+            --hidden-import rasterio.vrt `
+            --hidden-import rasterio.features `
+            --hidden-import rasterio._features `
+            --hidden-import fiona.schema `
+            CuscutaDetector.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CuscutaDetector-windows
+          path: cuscuta_detector/dist/CuscutaDetector.exe
+          if-no-files-found: error
