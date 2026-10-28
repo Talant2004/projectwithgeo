@@ -22,23 +22,46 @@ jobs:
         run: |
           python -m pip install -U pip wheel
           pip install -r requirements.txt
+          pip install pyinstaller upx-ucl || pip install pyinstaller
 
-      - name: Build exe
+      - name: Build exe (slim)
         working-directory: cuscuta_detector
         run: |
           pyinstaller --noconfirm --clean --windowed --onefile `
             --name CuscutaDetector `
-            --collect-all rasterio `
-            --collect-all fiona `
-            --collect-all pyproj `
-            --collect-all geopandas `
-            --collect-all shapely `
+            --strip `
+            --exclude-module geopandas `
+            --exclude-module fiona `
+            --exclude-module pandas `
+            --exclude-module matplotlib `
+            --exclude-module scipy `
+            --exclude-module IPython `
+            --exclude-module tkinter `
+            --exclude-module PyQt6.QtBluetooth `
+            --exclude-module PyQt6.QtNfc `
+            --exclude-module PyQt6.QtSensors `
+            --exclude-module PyQt6.QtMultimedia `
+            --exclude-module PyQt6.QtQml `
+            --exclude-module PyQt6.QtQuick `
+            --exclude-module PyQt6.QtWebEngineCore `
+            --exclude-module PyQt6.QtWebEngineWidgets `
+            --exclude-module PyQt6.QtWebEngine `
+            --exclude-module PyQt6.QtPositioning `
+            --exclude-module PyQt6.QtSql `
+            --exclude-module PyQt6.QtTest `
+            --collect-binaries rasterio `
             --hidden-import rasterio.sample `
             --hidden-import rasterio.vrt `
             --hidden-import rasterio.features `
-            --hidden-import rasterio._features `
-            --hidden-import fiona.schema `
             CuscutaDetector.py
+
+      - name: Report size
+        working-directory: cuscuta_detector
+        shell: pwsh
+        run: |
+          Get-Item dist\CuscutaDetector.exe | Format-List Name, Length
+          $mb = [math]::Round((Get-Item dist\CuscutaDetector.exe).Length / 1MB, 1)
+          Write-Host "SIZE_MB=$mb"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
